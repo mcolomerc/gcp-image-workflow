@@ -1,0 +1,60 @@
+main:
+  params: [event]
+  steps:
+  - log_event:
+      call: sys.log
+      args:
+          text: ${event}
+          severity: INFO
+  - extract_bucket_and_file:
+      assign:
+      - bucket: ${event.data.bucket}
+      - file: ${event.data.name}
+  - resize:
+      call: http.post
+      args:
+        url: [service_url] #Replace
+        auth:
+          type: OIDC
+        body:
+            bucket: ${bucket}
+            object: ${file}
+            width: 480
+            output: [output_bucket_here] # output bucket - Replace
+            outputpath: resized/480 # output path 
+      result: resizeResponse    
+  - edit:
+      call: http.post
+      args:
+        url: [service_url] #Replace
+        auth:
+          type: OIDC
+        body:
+            bucket: ${resizeResponse.body.bucket}
+            object: ${resizeResponse.body.object}
+            chain: 
+              AdjustBrightness: 40
+              AdjustContrast: 60
+            output: [output_bucket_here] # output bucket - Replace
+            outputpath: edited # output path 
+      result: editResponse    
+  - label:
+      call: http.post
+      args:
+        url: [service_url] #Replace
+        auth:
+          type: OIDC
+        body:
+            bucket: ${resizeResponse.body.bucket}
+            object: ${resizeResponse.body.object}           
+            output: [output_bucket_here] # output bucket - Replace          
+      result: labelResponse    
+  - final:
+      return:
+        file: ${event.data.name}
+        resize: ${resizeResponse.body.object}
+        edited: ${editResponse.body.object} 
+        labeled: ${labelResponse.body.object} 
+
+
+         
