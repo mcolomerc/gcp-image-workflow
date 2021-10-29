@@ -156,7 +156,7 @@ gcloud eventarc triggers create $TRIGGER_NAME \
 List triggers:
 
 ```
-gcloud eventarc triggers list --location=us-central1
+gcloud eventarc triggers list --location=$REGION
 ```
 
 ##### Workflow 
