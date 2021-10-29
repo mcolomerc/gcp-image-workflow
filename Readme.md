@@ -145,7 +145,7 @@ Note: Eventarc *Workflows destination* is currently a feature in private preview
 ```
 TRIGGER_NAME=trigger-$WORKFLOW_NAME
 gcloud eventarc triggers create $TRIGGER_NAME \
-  --location=us-central1 \
+  --location=$REGION \
   --destination-workflow=$WORKFLOW_NAME \
   --destination-workflow-location=$REGION \
   --event-filters="type=google.cloud.storage.object.v1.finalized" \
