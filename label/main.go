@@ -9,7 +9,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
-	"strings"
+	"time"
 
 	vision "cloud.google.com/go/vision/apiv1"
 	"github.com/gorilla/mux"
@@ -46,7 +46,7 @@ func (app *App) labelHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	uri := "gs://" + b.Bucket + "/" + b.Object
 	image := vision.NewImageFromURI(uri)
-	annotations, err := client.DetectLabels(ctx, image, nil, 1)
+	annotations, err := client.DetectLabels(ctx, image, nil, 5)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -54,7 +54,11 @@ func (app *App) labelHandler(w http.ResponseWriter, req *http.Request) {
 	fileName := filepath.Base(b.Object)
 	s := fmt.Sprintf(`{ "object": "%s", "bucket": "%s" }`, "No Label", b.Output)
 	if len(annotations) > 0 {
-		target := annotations[0].Description + "/" + fileName
+		var target string
+		for _, annotation := range annotations {
+			target = target + "/" + annotation.Description + "/" + fileName
+		}
+		target = target + "/" + fileName
 		app.Storage.CopyFile(b.Bucket, b.Object, b.Output, target)
 		s = fmt.Sprintf(`{ "object": "%s", "bucket": "%s" }`, target, b.Output)
 	}
@@ -64,38 +68,52 @@ func (app *App) labelHandler(w http.ResponseWriter, req *http.Request) {
 	respondWithJSON(w, http.StatusOK, response)
 }
 
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "UP")
+}
+
 func respondWithJSON(w http.ResponseWriter, code int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	json.NewEncoder(w).Encode(payload)
 }
 
+func (app *App) initialize() {
+	app.initialiseRoutes()
+	app.Storage = storage.New()
+}
+
 func (app *App) initialiseRoutes() {
 	app.Router = mux.NewRouter()
+	app.Router.Use(loggingMiddleware)
 	app.Router.HandleFunc("/", app.methodHandler)
 }
 
 func (app *App) run() {
-	log.Fatal(http.ListenAndServe(":8080", app.Router))
+	log.Println("Starting Server")
+	log.Println(http.ListenAndServe(":8080", app.Router))
 }
 
 func (app *App) methodHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "POST":
 		app.labelHandler(w, r)
+	case "GET":
+		healthHandler(w, r)
 	}
 }
 
 func main() {
 	app := App{}
-	app.Storage = storage.New()
-	app.initialiseRoutes()
+	app.initialize()
 	app.run()
 }
 
-func fileNameWithoutExtension(fileName string) string {
-	if pos := strings.LastIndexByte(fileName, '.'); pos != -1 {
-		return fileName[:pos]
-	}
-	return fileName
+func loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, req)
+		log.Printf("%s %s %s", req.Method, req.RequestURI, time.Since(start))
+	})
 }
